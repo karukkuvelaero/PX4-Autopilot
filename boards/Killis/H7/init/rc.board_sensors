@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# board specific sensors init
+#------------------------------------------------------------------------------
+
+board_adc start
+
+# # Internal SPI bus BMI088 accel/gyro
+bmi088 -s -b 2 -A -R 6 start
+bmi088 -s -b 2 -G -R 6 start
+
+# # Internal SPI bus BMI270 accel/gyro
+bmi270 -s -b 2 -R 0 start
+
+icm20649 -s -b 1 -R 6 start
+# Internal baro
+#dps310 -I start -a 118
+ms5611 -I -b 1 -a 0x77 start
+bmm150 -I -b 1 -a 0x13 start
+hmc5883 -I -b 1 -a 0x1E start
+ist8310 -I -R 2 start
+
+icm20649 -R 6 -s start
