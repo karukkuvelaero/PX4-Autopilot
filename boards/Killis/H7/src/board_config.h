@@ -80,12 +80,12 @@
 
 /* Define GPIO pins used as ADC N.B. Channel numbers must match below  */
 #define PX4_ADC_GPIO  \
-	/* PC0  */  GPIO_ADC123_INP10, \
+	/* PA4  */  GPIO_ADC12_INP18, \
 	/* PC1  */  GPIO_ADC123_INP11
 
 
 /* Define Channel numbers must match above GPIO pin IN(n)*/
-#define ADC_BATTERY_VOLTAGE_CHANNEL     /* PC0  */  ADC1_CH(10)
+#define ADC_BATTERY_VOLTAGE_CHANNEL     /* PC0  */  ADC1_CH(18)
 #define ADC_BATTERY_CURRENT_CHANNEL     /* PC1  */  ADC1_CH(11)
 
 
@@ -101,6 +101,10 @@
 // #define BOARD_BATTERY1_A_PER_V       (40.0f)
 // #define BOARD_BATTERY2_V_DIV         (11.0f)     /* measured with the provided PM board */
 
+/* Tone alarm output */
+
+#define GPIO_TONE_ALARM_IDLE    /* PG6 */ (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_2MHz|GPIO_OUTPUT_CLEAR|GPIO_PORTG|GPIO_PIN6)
+#define GPIO_TONE_ALARM_GPIO    /* PG6 */ (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_2MHz|GPIO_OUTPUT_SET|GPIO_PORTG|GPIO_PIN6)
 
 /* PWM
  */
@@ -139,6 +143,7 @@
 
 #define PX4_GPIO_INIT_LIST { \
 		PX4_ADC_GPIO, \
+		GPIO_TONE_ALARM_IDLE,             \
 		GPIO_CAN1_TX, \
 		GPIO_CAN1_RX, \
 	}
