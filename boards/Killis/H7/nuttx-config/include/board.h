@@ -399,7 +399,9 @@
 #define GPIO_SPI2_MOSI   GPIO_SPI2_MOSI_3               /* PC3 */
 #define GPIO_SPI2_SCK    ADJ_SLEW_RATE(GPIO_SPI2_SCK_5) /* PD3  */
 
-
+#define GPIO_SPI3_MISO   GPIO_SPI3_MISO_1               /* PB4  */
+#define GPIO_SPI3_MOSI   GPIO_SPI3_MOSI_3               /* PB2 */
+#define GPIO_SPI3_SCK    ADJ_SLEW_RATE(GPIO_SPI3_SCK_1) /* PB3  */
 
 /* I2C
  *
