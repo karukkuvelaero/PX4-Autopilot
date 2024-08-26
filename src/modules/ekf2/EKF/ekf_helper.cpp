@@ -96,20 +96,7 @@ bool Ekf::setEkfGlobalOrigin(const double latitude, const double longitude, cons
 		_pos_ref.initReference(latitude, longitude, _time_delayed_us);
 		_gps_alt_ref = altitude;
 
-#if defined(CONFIG_EKF2_MAGNETOMETER)
-		const float mag_declination_gps = math::radians(get_mag_declination_degrees(latitude, longitude));
-		const float mag_inclination_gps = math::radians(get_mag_inclination_degrees(latitude, longitude));
-		const float mag_strength_gps = get_mag_strength_gauss(latitude, longitude);
-
-		if (PX4_ISFINITE(mag_declination_gps) && PX4_ISFINITE(mag_inclination_gps) && PX4_ISFINITE(mag_strength_gps)) {
-			_mag_declination_gps = mag_declination_gps;
-			_mag_inclination_gps = mag_inclination_gps;
-			_mag_strength_gps = mag_strength_gps;
-
-			_wmm_gps_time_last_set = _time_delayed_us;
-		}
-
-#endif // CONFIG_EKF2_MAGNETOMETER
+		updateWmm(current_lat, current_lon);
 
 		_gpos_origin_eph = eph;
 		_gpos_origin_epv = epv;
@@ -143,6 +130,39 @@ bool Ekf::setEkfGlobalOrigin(const double latitude, const double longitude, cons
 
 	return false;
 }
+
+void Ekf::updateWmm(const double lat, const double lon)
+{
+#if defined(CONFIG_EKF2_MAGNETOMETER)
+
+	// set the magnetic field data returned by the geo library using the current GPS position
+	const float mag_declination_gps = math::radians(get_mag_declination_degrees(lat, lon));
+	const float mag_inclination_gps = math::radians(get_mag_inclination_degrees(lat, lon));
+	const float mag_strength_gps = get_mag_strength_gauss(lat, lon);
+
+	if (PX4_ISFINITE(mag_declination_gps) && PX4_ISFINITE(mag_inclination_gps) && PX4_ISFINITE(mag_strength_gps)) {
+
+		const bool mag_declination_changed = (fabsf(mag_declination_gps - _mag_declination_gps) > math::radians(1.f));
+		const bool mag_inclination_changed = (fabsf(mag_inclination_gps - _mag_inclination_gps) > math::radians(1.f));
+
+		if ((_wmm_gps_time_last_set == 0)
+		    || !PX4_ISFINITE(_mag_declination_gps)
+		    || !PX4_ISFINITE(_mag_inclination_gps)
+		    || !PX4_ISFINITE(_mag_strength_gps)
+		    || mag_declination_changed
+		    || mag_inclination_changed
+		   ) {
+			_mag_declination_gps = mag_declination_gps;
+			_mag_inclination_gps = mag_inclination_gps;
+			_mag_strength_gps = mag_strength_gps;
+
+			_wmm_gps_time_last_set = _time_delayed_us;
+		}
+	}
+
+#endif // CONFIG_EKF2_MAGNETOMETER
+}
+
 
 void Ekf::get_ekf_gpos_accuracy(float *ekf_eph, float *ekf_epv) const
 {
@@ -319,7 +339,7 @@ void Ekf::resetAccelBias()
 float Ekf::getHeadingInnovationTestRatio() const
 {
 	// return the largest heading innovation test ratio
-	float test_ratio = 0.f;
+	float test_ratio = -1.f;
 
 #if defined(CONFIG_EKF2_MAGNETOMETER)
 
@@ -347,10 +367,14 @@ float Ekf::getHeadingInnovationTestRatio() const
 
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
-	return sqrtf(test_ratio);
+	if (PX4_ISFINITE(test_ratio) && (test_ratio >= 0.f)) {
+		return sqrtf(test_ratio);
+	}
+
+	return NAN;
 }
 
-float Ekf::getVelocityInnovationTestRatio() const
+float Ekf::getHorizontalVelocityInnovationTestRatio() const
 {
 	// return the largest velocity innovation test ratio
 	float test_ratio = -1.f;
@@ -358,7 +382,7 @@ float Ekf::getVelocityInnovationTestRatio() const
 #if defined(CONFIG_EKF2_GNSS)
 
 	if (_control_status.flags.gps) {
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 2; i++) { // only xy
 			test_ratio = math::max(test_ratio, fabsf(_aid_src_gnss_vel.test_ratio_filtered[i]));
 		}
 	}
@@ -368,7 +392,7 @@ float Ekf::getVelocityInnovationTestRatio() const
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 
 	if (_control_status.flags.ev_vel) {
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 2; i++) { // only xy
 			test_ratio = math::max(test_ratio, fabsf(_aid_src_ev_vel.test_ratio_filtered[i]));
 		}
 	}
@@ -384,6 +408,34 @@ float Ekf::getVelocityInnovationTestRatio() const
 	}
 
 #endif // CONFIG_EKF2_OPTICAL_FLOW
+
+	if (PX4_ISFINITE(test_ratio) && (test_ratio >= 0.f)) {
+		return sqrtf(test_ratio);
+	}
+
+	return NAN;
+}
+
+float Ekf::getVerticalVelocityInnovationTestRatio() const
+{
+	// return the largest velocity innovation test ratio
+	float test_ratio = -1.f;
+
+#if defined(CONFIG_EKF2_GNSS)
+
+	if (_control_status.flags.gps) {
+		test_ratio = math::max(test_ratio, fabsf(_aid_src_gnss_vel.test_ratio_filtered[2]));
+	}
+
+#endif // CONFIG_EKF2_GNSS
+
+#if defined(CONFIG_EKF2_EXTERNAL_VISION)
+
+	if (_control_status.flags.ev_vel) {
+		test_ratio = math::max(test_ratio, fabsf(_aid_src_ev_vel.test_ratio_filtered[2]));
+	}
+
+#endif // CONFIG_EKF2_EXTERNAL_VISION
 
 	if (PX4_ISFINITE(test_ratio) && (test_ratio >= 0.f)) {
 		return sqrtf(test_ratio);
@@ -511,21 +563,35 @@ float Ekf::getSyntheticSideslipInnovationTestRatio() const
 
 float Ekf::getHeightAboveGroundInnovationTestRatio() const
 {
-	float test_ratio = -1.f;
+	// return the combined HAGL innovation test ratio
+	float hagl_sum = 0.f;
+	int n_hagl_sources = 0;
 
 #if defined(CONFIG_EKF2_TERRAIN)
+
+# if defined(CONFIG_EKF2_OPTICAL_FLOW)
+
+	if (_control_status.flags.opt_flow_terrain) {
+		hagl_sum += sqrtf(math::max(fabsf(_aid_src_optical_flow.test_ratio_filtered[0]),
+					    _aid_src_optical_flow.test_ratio_filtered[1]));
+		n_hagl_sources++;
+	}
+
+# endif // CONFIG_EKF2_OPTICAL_FLOW
+
 # if defined(CONFIG_EKF2_RANGE_FINDER)
 
 	if (_control_status.flags.rng_terrain) {
-		// return the terrain height innovation test ratio
-		test_ratio = math::max(test_ratio, fabsf(_aid_src_rng_hgt.test_ratio_filtered));
+		hagl_sum += sqrtf(fabsf(_aid_src_rng_hgt.test_ratio_filtered));
+		n_hagl_sources++;
 	}
 
 # endif // CONFIG_EKF2_RANGE_FINDER
+
 #endif // CONFIG_EKF2_TERRAIN
 
-	if (PX4_ISFINITE(test_ratio) && (test_ratio >= 0.f)) {
-		return sqrtf(test_ratio);
+	if (n_hagl_sources > 0) {
+		return math::max(hagl_sum / static_cast<float>(n_hagl_sources), FLT_MIN);
 	}
 
 	return NAN;
@@ -576,7 +642,8 @@ uint16_t Ekf::get_ekf_soln_status() const
 #endif // CONFIG_EKF2_TERRAIN
 
 	// 128	ESTIMATOR_CONST_POS_MODE	True if the EKF is in a constant position mode and is not using external measurements (eg GPS or optical flow)
-	soln_status.flags.const_pos_mode = _control_status.flags.fake_pos || _control_status.flags.vehicle_at_rest;
+	soln_status.flags.const_pos_mode = _control_status.flags.fake_pos || _control_status.flags.valid_fake_pos
+					   || _control_status.flags.vehicle_at_rest;
 
 	// 256	ESTIMATOR_PRED_POS_HORIZ_REL	True if the EKF has sufficient data to enter a mode that will provide a (relative) position estimate
 	soln_status.flags.pred_pos_horiz_rel = isHorizontalAidingActive();
@@ -727,6 +794,13 @@ void Ekf::updateHorizontalDeadReckoningstatus()
 		}
 	}
 
+	if (_control_status.flags.valid_fake_pos && isRecent(_aid_src_fake_pos.time_last_fuse, _params.no_aid_timeout_max)) {
+		// only respect as a valid aiding source now if we expect to have another valid source once in air
+		if (aiding_expected_in_air) {
+			inertial_dead_reckoning = false;
+		}
+	}
+
 	if (inertial_dead_reckoning) {
 		if (isTimedOut(_time_last_horizontal_aiding, (uint64_t)_params.valid_timeout_max)) {
 			// deadreckon time exceeded
@@ -818,49 +892,27 @@ void Ekf::updateGroundEffect()
 }
 #endif // CONFIG_EKF2_BAROMETER
 
-#if defined(CONFIG_EKF2_WIND)
-void Ekf::resetWind()
-{
-#if defined(CONFIG_EKF2_AIRSPEED)
-
-	if (_control_status.flags.fuse_aspd && isRecent(_airspeed_sample_delayed.time_us, 1e6)) {
-		resetWindUsingAirspeed(_airspeed_sample_delayed);
-		return;
-	}
-
-#endif // CONFIG_EKF2_AIRSPEED
-
-	resetWindToZero();
-}
-
-void Ekf::resetWindToZero()
-{
-	ECL_INFO("reset wind to zero");
-
-	// If we don't have an airspeed measurement, then assume the wind is zero
-	_state.wind_vel.setZero();
-
-	resetWindCov();
-}
-
-#endif // CONFIG_EKF2_WIND
 
 void Ekf::updateIMUBiasInhibit(const imuSample &imu_delayed)
 {
 	// inhibit learning of imu accel bias if the manoeuvre levels are too high to protect against the effect of sensor nonlinearities or bad accel data is detected
 	// xy accel bias learning is also disabled on ground as those states are poorly observable when perpendicular to the gravity vector
 	{
+		const Vector3f gyro_corrected = imu_delayed.delta_ang / imu_delayed.delta_ang_dt - _state.gyro_bias;
+
 		const float alpha = math::constrain((imu_delayed.delta_ang_dt / _params.acc_bias_learn_tc), 0.f, 1.f);
 		const float beta = 1.f - alpha;
-		_ang_rate_magnitude_filt = fmaxf(imu_delayed.delta_ang.norm() / imu_delayed.delta_ang_dt,
-						 beta * _ang_rate_magnitude_filt);
+
+		_ang_rate_magnitude_filt = fmaxf(gyro_corrected.norm(), beta * _ang_rate_magnitude_filt);
 	}
 
 	{
+		const Vector3f accel_corrected = imu_delayed.delta_vel / imu_delayed.delta_vel_dt - _state.accel_bias;
+
 		const float alpha = math::constrain((imu_delayed.delta_vel_dt / _params.acc_bias_learn_tc), 0.f, 1.f);
 		const float beta = 1.f - alpha;
 
-		_accel_magnitude_filt = fmaxf(imu_delayed.delta_vel.norm() / imu_delayed.delta_vel_dt, beta * _accel_magnitude_filt);
+		_accel_magnitude_filt = fmaxf(accel_corrected.norm(), beta * _accel_magnitude_filt);
 	}
 
 
