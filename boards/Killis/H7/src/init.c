@@ -43,12 +43,22 @@
 
 #include "board_config.h"
 
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <debug.h>
+#include <errno.h>
 #include <syslog.h>
 
 #include <nuttx/config.h>
 #include <nuttx/board.h>
+#include <nuttx/spi/spi.h>
 #include <nuttx/sdio.h>
 #include <nuttx/mmcsd.h>
+#include <nuttx/analog/adc.h>
+#include <nuttx/mm/gran.h>
+#include <chip.h>
+#include <stm32_uart.h>
 #include <arch/board/board.h>
 #include "arm_internal.h"
 
@@ -59,6 +69,8 @@
 #include <px4_platform_common/init.h>
 #include <px4_platform/gpio.h>
 #include <px4_platform/board_dma_alloc.h>
+
+#include <mpu.h>
 
 # if defined(FLASH_BASED_PARAMS)
 #  include <parameters/flashparams/flashfs.h>
@@ -78,7 +90,7 @@ __END_DECLS
  ************************************************************************************/
 __EXPORT void board_peripheral_reset(int ms)
 {
-	UNUSED(ms);
+
 }
 
 /************************************************************************************
@@ -160,6 +172,11 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 		syslog(LOG_ERR, "[boot] DMA alloc FAILED\n");
 	}
 
+#if defined(SERIAL_HAVE_RXDMA)
+	// set up the serial DMA polling at 1ms intervals for received bytes that have not triggered a DMA event.
+	static struct hrt_call serial_dma_call;
+	hrt_call_every(&serial_dma_call, 1000, 1000, (hrt_callout)stm32_serial_dma_poll, NULL);
+#endif
 	/* initial LED state */
 	drv_led_start();
 	led_off(LED_RED);

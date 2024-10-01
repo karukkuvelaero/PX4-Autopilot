@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2021 PX4 Development Team. All rights reserved.
+ *   Copyright (C) 2020 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,14 +31,24 @@
  *
  ****************************************************************************/
 
-#pragma once
+#include <nuttx/spi/spi.h>
+#include <px4_platform_common/px4_manifest.h>
+//                                                              KiB BS    nB
+static const px4_mft_device_t spi2 = {             // FM25V02A on FMUM native: 32K X 8, emulated as (1024 Blocks of 32)
+	.bus_type = px4_mft_device_t::SPI,
+	.devid    = SPIDEV_FLASH(0)
+};
 
-#define DMAMAP_SPI1_RX    DMAMAP_DMA12_SPI1RX_0     /* 1 DMA1:37 BMI088, ICM-42688-P */
-#define DMAMAP_SPI1_TX    DMAMAP_DMA12_SPI1TX_0     /* 2 DMA1:38 BMI088, ICM-42688-P  */
-
-#define DMAMAP_SPI2_RX    DMAMAP_DMA12_SPI2RX_0 /* DMA1:39 */
-#define DMAMAP_SPI2_TX    DMAMAP_DMA12_SPI2TX_0 /* DMA1:40 */
 
 
-#define DMAMAP_USART3_RX  DMAMAP_DMA12_USART3RX_1   /* 3 DMA2:45 DEBUG */
-#define DMAMAP_USART3_TX  DMAMAP_DMA12_USART3TX_1   /* 4 DMA2:46 DEBUG */
+static const px4_mtd_entry_t fmum_fram = {
+	.device = &spi2,
+	.npart = 1,
+	.partd = {
+		{
+			.type = MTD_PARAMETERS,
+			.path = "/fs/mtd_params",
+			.nblocks = (32768 / (1 << CONFIG_RAMTRON_EMULATE_SECTOR_SHIFT))
+		}
+	},
+};
