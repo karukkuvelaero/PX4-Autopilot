@@ -32,9 +32,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  ************************************************************************************/
-#ifndef __NUTTX_CONFIG_MICOAIR743_INCLUDE_BOARD_H
-#define __NUTTX_CONFIG_MICOAIR743_INCLUDE_BOARD_H
-
+#pragma once
 /************************************************************************************
  * Included Files
  ************************************************************************************/
@@ -425,4 +423,4 @@
 # define PROBE(n,s)
 # define PROBE_MARK(n)
 
-#endif  /*__NUTTX_CONFIG_MICOAIR743_INCLUDE_BOARD_H  */
+  /*__NUTTX_CONFIG_MICOAIR743_INCLUDE_BOARD_H  */
